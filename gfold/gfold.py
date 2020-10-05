@@ -8,6 +8,11 @@ from wcwidth import wcswidth
 from docopt import docopt
 
 
+_script_dir = os.path.dirname(os.path.realpath(__file__))
+with open(os.path.join(_script_dir, 'VERSION.txt')) as _inp:
+    __version__ = _inp.readline().rstrip()
+
+
 def fold_lines(outp: TextIO, input_file: Union[str, os.PathLike], 
         width: int, separate_by_spaces: bool = False) -> None:
     assert width >= 16
@@ -69,7 +74,7 @@ Options:
 
 
 def main() -> None:
-    args = docopt(__doc__)
+    args = docopt(__doc__, version=__version__)
     opt_spaces = args['--spaces']
     width = int(args['--width'])
     output_name = args['--output']
