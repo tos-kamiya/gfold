@@ -3,7 +3,7 @@ import sys
 from typing import *
 from typing.io import *
 
-import grapheme
+from grapheme import slice
 from wcwidth import wcswidth
 from docopt import docopt
 
@@ -13,49 +13,40 @@ with open(os.path.join(_script_dir, 'VERSION.txt')) as _inp:
     __version__ = _inp.readline().rstrip()
 
 
-def fold_lines(outp: TextIO, input_file: Union[str, os.PathLike], 
-        width: int, separate_by_spaces: bool = False) -> None:
+def fold_lines_iter(lines_it: Iterable[str], width: int, 
+        max_removal: int = 14, separate_by_spaces: bool = False) -> Iterator[str]:
     assert width >= 16
-    max_removal = 14
+    assert max_removal < width
 
     w2 = width // 2
 
-    if input_file == '-':
-        inp = sys.stdin
-    else:
-        inp = open(input_file, 'r')
+    for L in lines_it:
+        L = L.rstrip()
+        if not L:
+            yield ''
+            continue  # for L
 
-    try:
-        for L in inp:
-            L = L.rstrip()
-            if not L:
-                outp.write('\n')
-                continue  # for L
-
-            while L:
-                c = w2
-                s = grapheme.slice(L, 0, c)
+        len_L_1 = len(L) - 1
+        idx = 0
+        while idx < len_L_1:
+            c = w2
+            s = slice(L, idx, idx + c)
+            sl = wcswidth(s)
+            while idx + c < len_L_1 and sl < width:
+                c += ((width - sl) // 2) or 1
+                s = slice(L, idx, idx + c)
                 sl = wcswidth(s)
-                while s != L and sl < width:
-                    c += ((width - sl) // 2) or 1
-                    s = grapheme.slice(L, 0, c)
-                    sl = wcswidth(s)
 
-                if separate_by_spaces and s != L and not s[-1].isspace():
-                    rc = 0
-                    max_rc = min(max_removal, len(s) - 1)
-                    while rc < max_rc:
-                        if s[-1 - rc].isspace():
-                            s = s[:-rc]
-                            break  # while rc
-                        rc += 1
-                
-                outp.write(s)
-                outp.write('\n')
-                L = L[len(s):]
-    finally:
-        if input_file != '-':
-            inp.close()
+            if separate_by_spaces and idx + c < len_L_1 and not s[-1].isspace():
+                max_rc = min(max_removal, len(s) - 1)
+                for rc in range(0, max_rc):
+                    if s[-1 - rc].isspace():
+                        s = s[:-rc]
+                        break  # for rc
+            
+            assert s
+            yield s
+            idx += len(s)
 
 
 __doc__ = """
@@ -95,7 +86,17 @@ def main() -> None:
         outp = open(output_name, 'w')
     try:
         for f in input_names:
-            fold_lines(outp, f, width, separate_by_spaces=opt_spaces)
+            if f == '-':
+                inp = sys.stdin
+            else:
+                inp = open(f, 'r')
+            try:
+                for s in fold_lines_iter(inp, width, max_removal=14, separate_by_spaces=opt_spaces):
+                    outp.write(s)
+                    outp.write('\n')
+            finally:
+                if f != '-':
+                    inp.close()
     finally:
         if output_name != '-':
             outp.close()
